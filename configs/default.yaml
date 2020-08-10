@@ -1,0 +1,3 @@
+model:
+  latent_dim_pointnet: 512
+  latent_dim_resnet: 256

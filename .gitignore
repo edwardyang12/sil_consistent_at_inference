@@ -2,3 +2,5 @@
 notebooks/__pycache__
 notebooks/test_dataset/
 *.swp
+
+__pycache__/
