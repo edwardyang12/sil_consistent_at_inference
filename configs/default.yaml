@@ -1,3 +1,6 @@
 model:
   latent_dim_pointnet: 512
   latent_dim_resnet: 256
+training:
+  num_iterations: 1000
+  l2_lam: 100

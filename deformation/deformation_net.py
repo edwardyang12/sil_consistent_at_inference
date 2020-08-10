@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from .pointnet import SimplePointnet, ResnetPointnet
 from .resnet import Resnet18
+from utils import network_utils
 
 class DeformationNetwork(nn.Module):
 
@@ -22,6 +23,7 @@ class DeformationNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, num_vertices*3)
         )
+        self.deform_net.apply(network_utils.weights_init_normal)
         self.num_vertices = num_vertices
 
     
