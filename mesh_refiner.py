@@ -46,7 +46,6 @@ class MeshRefiner():
     # given a mesh, mask, and pose, solves an optimization problem which encourages
     # silhouette consistency on the mask at the given pose.
     # TODO: fix mesh (currently, needs to already be in device)
-    # TODO: should the input be image or mask?
     def refine_mesh(self, mesh, image, mask, pred_dist, pred_elev, pred_azim):
         '''
         Args:
@@ -58,21 +57,18 @@ class MeshRefiner():
             
         '''
 
-        # prep inputs 
+        # prep inputs used during training
         pose_in = torch.unsqueeze(torch.tensor([pred_dist, pred_elev, pred_azim]),0).to(self.device)
-        # prep for image input: normalize, set as floattensor, permute so channel is first, and turn into minibatch of size one
         image_in = torch.unsqueeze(torch.tensor(image/255, dtype=torch.float).permute(2,0,1),0).to(self.device)
-        # preps for points input: set minibatch of size one
         verts_in = torch.unsqueeze(mesh.verts_packed(),0).to(self.device)
         mask_gt = torch.tensor(mask, dtype=torch.float).to(self.device)
         R, T = look_at_view_transform(pred_dist, pred_elev, pred_azim) 
         num_vertices = mesh.verts_packed().shape[0]
         zero_deformation_tensor = torch.zeros((num_vertices, 3)).to(self.device)
 
-        # prep network
+        # prep network & optimizer
         deform_net = DeformationNetwork(self.cfg, num_vertices, self.device)
         deform_net.to(self.device)
-
         optimizer = optim.Adam(deform_net.parameters(), lr=1e-5)
 
         # optimizing  
@@ -80,30 +76,31 @@ class MeshRefiner():
         for i in tqdm(range(self.num_iterations)):
             deform_net.train()
             optimizer.zero_grad()
-
-
+            
+            # computing mesh deformation & its render at the input pose
             delta_v = deform_net(pose_in, image_in, verts_in)
             delta_v = delta_v.reshape((-1,3))
             deformed_mesh = mesh.offset_verts(delta_v)
-    
             rendered_deformed_mesh = utils.render_mesh(deformed_mesh, R, T, self.device, img_size=224, silhouette=True)
 
-            sil_loss = F.binary_cross_entropy(rendered_deformed_mesh[0, :,:, 3], mask_gt)
+            # computing losses
             l2_loss = F.mse_loss(delta_v, zero_deformation_tensor)
             lap_smoothness_loss = mesh_laplacian_smoothing(deformed_mesh)
             normal_consistency_loss = mesh_normal_consistency(deformed_mesh)
+
+            sil_loss = F.binary_cross_entropy(rendered_deformed_mesh[0, :,:, 3], mask_gt)
             sym_plane_normal = [0,0,1]
             img_sym_loss = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.device)
             vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
 
+            # optimization step on weighted losses
             total_loss = (sil_loss*self.sil_lam + l2_loss*self.l2_lam + lap_smoothness_loss*self.lap_lam +
                           normal_consistency_loss*self.normals_lam + img_sym_loss*self.img_sym_lam + 
                           vertex_sym_loss*self.vertex_sym_lam)
-
             total_loss.backward()
             optimizer.step()
 
-
+            # saving info
             iter_loss_info = {"iter":i, "sil_loss": sil_loss.item(), "l2_loss": l2_loss.item(), 
                               "lap_smoothness_loss":lap_smoothness_loss.item(),
                               "normal_consistency_loss": normal_consistency_loss.item(),"img_sym_loss": img_sym_loss.item(),

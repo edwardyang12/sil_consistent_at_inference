@@ -13,26 +13,6 @@ from utils import utils
 # distance between points on one side and its nearest neighbor point on the other side
 # args:
 #   Sym_plane: list of 3 numbers
-    # https://math.stackexchange.com/questions/693414/reflection-across-the-plane
-
-def vertex_symmetry_loss(mesh, sym_plane, device):
-    N = np.array([sym_plane])
-    reflect_matrix = torch.tensor(np.eye(3) - 2*N.T@N, dtype=torch.float).to(device)
-
-    mesh_verts = mesh.verts_packed()
-    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(mesh_verts.detach().cpu())
-    sym_loss = 0
-    for point in mesh_verts:
-        #note: need to check if things are still backpropogatable
-        sym_point = reflect_matrix @ point
-        distances, indices = nbrs.kneighbors(sym_point.detach().cpu().reshape(1,-1))
-        sym_loss += torch.dist(sym_point, mesh_verts[indices.item()])
-
-    avg_sym_loss = sym_loss / mesh_verts.shape[0]
-
-    return avg_sym_loss
-
-
 # https://math.stackexchange.com/questions/693414/reflection-across-the-plane
 def vertex_symmetry_loss_fast(mesh, sym_plane, device):
     N = np.array([sym_plane])
@@ -68,17 +48,13 @@ def image_symmetry_loss(mesh, sym_plane, device):
     #azim = 151.57894897460938
     R, T = look_at_view_transform(dist, elev, azim)
 
-    camera_position = pytorch3d.renderer.cameras.camera_position_from_spherical_angles(dist, elev, azim).to(device)
-    R_sym = pytorch3d.renderer.cameras.look_at_rotation(camera_position@reflect_matrix)
-
-
     # render at camera 1
     R1 = utils.render_mesh(mesh, R, T, device, img_size=224, silhouette=True)[0, :,:, 3]
-    #R1 = utils.render_mesh(mesh, R, T, device, img_size=224, silhouette=False)[0, ..., :3]
     R1_flipped = torch.flip(R1, [1])
     # render at camera 2: camera 1 reflected across plane of symmetry
+    camera_position = pytorch3d.renderer.cameras.camera_position_from_spherical_angles(dist, elev, azim).to(device)
+    R_sym = pytorch3d.renderer.cameras.look_at_rotation(camera_position@reflect_matrix)
     R2 = utils.render_mesh(mesh, R_sym, T, device, img_size=224, silhouette=True)[0, :,:, 3]
-    #R2 = utils.render_mesh(mesh, R_sym, T, device, img_size=224, silhouette=False)[0, ..., :3]
     
     sym_loss = F.mse_loss(R1_flipped, R2)
     #sym_loss = F.binary_cross_entropy(R1_flipped, R2)

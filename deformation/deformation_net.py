@@ -46,13 +46,8 @@ class DeformationNetwork(nn.Module):
         
         image_encoding = self.resnet_encoder(image)
         verts_encoding = self.pointnet_encoder(mesh_vertices)
-        #print(pose.shape)
-        #print(image_encoding.shape)
-        #print(verts_encoding.shape)
         combined_encoding = torch.cat((pose, image_encoding, verts_encoding), 1)
-        #print(combined_encoding.shape)
 
         delta_v = self.deform_net(combined_encoding)
-        #print(delta_v.shape)
         return delta_v
 
