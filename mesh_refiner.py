@@ -19,11 +19,13 @@ from pytorch3d.renderer import (
     TexturedSoftPhongShader,
     SoftPhongShader
 )
+from pytorch3d.loss import mesh_laplacian_smoothing, mesh_normal_consistency
 from tqdm import tqdm
 import pandas as pd
 
 from utils import utils, network_utils
 from deformation.deformation_net import DeformationNetwork
+import deformation.losses as def_losses
 
 
 class MeshRefiner():
@@ -33,7 +35,12 @@ class MeshRefiner():
         self.device = device
 
         self.num_iterations = self.cfg["training"]["num_iterations"]
+        self.sil_lam = self.cfg["training"]["sil_lam"]
         self.l2_lam = self.cfg["training"]["l2_lam"]
+        self.lap_lam = self.cfg["training"]["lap_lam"]
+        self.normals_lam= self.cfg["training"]["normals_lam"]
+        self.img_sym_lam= self.cfg["training"]["img_sym_lam"]
+        self.vertex_sym_lam= self.cfg["training"]["vertex_sym_lam"]
 
 
     # given a mesh, mask, and pose, solves an optimization problem which encourages
@@ -66,7 +73,7 @@ class MeshRefiner():
         deform_net = DeformationNetwork(self.cfg, num_vertices, self.device)
         deform_net.to(self.device)
 
-        optimizer = optim.Adam(deform_net.parameters(), lr=1e-4)
+        optimizer = optim.Adam(deform_net.parameters(), lr=1e-5)
 
         # optimizing  
         loss_info = pd.DataFrame()
@@ -80,15 +87,27 @@ class MeshRefiner():
             deformed_mesh = mesh.offset_verts(delta_v)
     
             rendered_deformed_mesh = utils.render_mesh(deformed_mesh, R, T, self.device, img_size=224, silhouette=True)
+
             sil_loss = F.binary_cross_entropy(rendered_deformed_mesh[0, :,:, 3], mask_gt)
             l2_loss = F.mse_loss(delta_v, zero_deformation_tensor)
-            loss = sil_loss + l2_loss * self.l2_lam
+            lap_smoothness_loss = mesh_laplacian_smoothing(deformed_mesh)
+            normal_consistency_loss = mesh_normal_consistency(deformed_mesh)
+            sym_plane_normal = [0,0,1]
+            img_sym_loss = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.device)
+            vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
 
-            loss.backward()
+            total_loss = (sil_loss*self.sil_lam + l2_loss*self.l2_lam + lap_smoothness_loss*self.lap_lam +
+                          normal_consistency_loss*self.normals_lam + img_sym_loss*self.img_sym_lam + 
+                          vertex_sym_loss*self.vertex_sym_lam)
+
+            total_loss.backward()
             optimizer.step()
 
 
-            iter_loss_info = {"iter":i, "sil_loss": sil_loss.item(), "l2_loss": l2_loss.item(), "total_loss": loss.item()}
+            iter_loss_info = {"iter":i, "sil_loss": sil_loss.item(), "l2_loss": l2_loss.item(), 
+                              "lap_smoothness_loss":lap_smoothness_loss.item(),
+                              "normal_consistency_loss": normal_consistency_loss.item(),"img_sym_loss": img_sym_loss.item(),
+                              "vertex_sym_loss": vertex_sym_loss.item(), "total_loss": total_loss.item()}
             loss_info = loss_info.append(iter_loss_info, ignore_index = True)
 
         return deformed_mesh, loss_info

@@ -21,6 +21,12 @@ class DeformationNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
             nn.Linear(1024, num_vertices*3)
         )
         self.deform_net.apply(network_utils.weights_init_normal)
