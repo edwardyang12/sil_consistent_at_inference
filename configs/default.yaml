@@ -3,6 +3,7 @@ model:
   latent_dim_resnet: 256
 training:
   num_iterations: 700
+  img_sym_num_azim: 3
 
   sil_lam: 5 # silouette loss. [5]
   vertex_sym_lam: 0.1 # vertex-based symmetry loss [0.1*]

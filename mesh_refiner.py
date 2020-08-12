@@ -35,6 +35,8 @@ class MeshRefiner():
         self.device = device
 
         self.num_iterations = self.cfg["training"]["num_iterations"]
+        self.img_sym_num_azim = self.cfg["training"]["img_sym_num_azim"]
+
         self.sil_lam = self.cfg["training"]["sil_lam"]
         self.l2_lam = self.cfg["training"]["l2_lam"]
         self.lap_lam = self.cfg["training"]["lap_lam"]
@@ -54,9 +56,7 @@ class MeshRefiner():
         pred_azim (int)
         image (np int array, 224 x 224 x 3, rgb, 0-255)
         mask (np bool array, 224 x 224)
-            
         '''
-
         # prep inputs used during training
         pose_in = torch.unsqueeze(torch.tensor([pred_dist, pred_elev, pred_azim]),0).to(self.device)
         image_in = torch.unsqueeze(torch.tensor(image/255, dtype=torch.float).permute(2,0,1),0).to(self.device)
@@ -90,7 +90,7 @@ class MeshRefiner():
 
             sil_loss = F.binary_cross_entropy(rendered_deformed_mesh[0, :,:, 3], mask_gt)
             sym_plane_normal = [0,0,1]
-            img_sym_loss = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.device)
+            img_sym_loss = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.img_sym_num_azim, self.device)
             vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
 
             # optimization step on weighted losses

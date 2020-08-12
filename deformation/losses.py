@@ -34,33 +34,48 @@ def vertex_symmetry_loss_fast(mesh, sym_plane, device):
 
 # image based symmetry loss
 # renders mesh at offsets about the plane of symmetry and computes a MSE loss in pixel space
-def image_symmetry_loss(mesh, sym_plane, device):
+# silhouette should normally be true; only false for debug purposes
+def image_symmetry_loss(mesh, sym_plane, num_azim, device, render_silhouettes=True):
     N = np.array([sym_plane])
     if np.linalg.norm(N) != 1:
         raise ValueError("sym_plane needs to be a unit normal")
 
-    reflect_matrix = torch.tensor(np.eye(3) - 2*N.T@N, dtype=torch.float).to(device)
+    # camera positions for one half of the sphere
+    num_views_on_half = num_azim * 2
+    azims = torch.linspace(0,180,num_azim+2)[1:-1].repeat(2)
+    elevs = torch.Tensor([-45 for i in range(num_azim)] + [45 for i in range(num_azim)] )
+    dists = torch.ones(num_views_on_half) * 1.9
+    R_half_1, T_half_1 = look_at_view_transform(dists, elevs, azims)
+    R = [R_half_1]
 
-    dist = 1.269230842590332
-    elev = 9.473684310913086
-    #elev = 50.473684310913086
-    azim = 151.57894897460938
-    #azim = 151.57894897460938
-    R, T = look_at_view_transform(dist, elev, azim)
+    # compute the other half of camera positions according to plane of symmetry
+    reflect_matrix = torch.tensor(np.eye(3) - 2*N.T@N, dtype=torch.float)
+    for i in range(num_views_on_half):
+        camera_position = pytorch3d.renderer.cameras.camera_position_from_spherical_angles(dists[i], elevs[i], azims[i])
+        R_sym = pytorch3d.renderer.cameras.look_at_rotation(camera_position@reflect_matrix)
+        R.append(R_sym)
+    R = torch.cat(R)
+    T = torch.cat([T_half_1, T_half_1])
 
-    # render at camera 1
-    R1 = utils.render_mesh(mesh, R, T, device, img_size=224, silhouette=True)[0, :,:, 3]
-    R1_flipped = torch.flip(R1, [1])
-    # render at camera 2: camera 1 reflected across plane of symmetry
-    camera_position = pytorch3d.renderer.cameras.camera_position_from_spherical_angles(dist, elev, azim).to(device)
-    R_sym = pytorch3d.renderer.cameras.look_at_rotation(camera_position@reflect_matrix)
-    R2 = utils.render_mesh(mesh, R_sym, T, device, img_size=224, silhouette=True)[0, :,:, 3]
+    # rendering
+    meshes = mesh.extend(num_views_on_half*2)
+    if render_silhouettes:
+        renders = utils.render_mesh(meshes, R, T, device, img_size=224, silhouette=True)[...,3]
+    else:
+        renders = utils.render_mesh(meshes, R, T, device, img_size=224, silhouette=False)
     
-    sym_loss = F.mse_loss(R1_flipped, R2)
-    #sym_loss = F.binary_cross_entropy(R1_flipped, R2)
-    
-    return sym_loss
-    #return sym_loss, R1, R1_flipped, R2
+    # a sym_triple is [R1, R1_flipped, R2]
+    sym_triples = []
+    for i in range(num_views_on_half):
+        sym_triples.append([renders[i], torch.flip(renders[i], [1]), renders[i+num_views_on_half]])
 
+    # calculating loss. 
+    # TODO: don't average b/c it could "dilute" a viewpoint with really bad symmetry?
+    sym_loss = 0
+    for sym_triple in sym_triples:
+        sym_loss += F.mse_loss(sym_triple[1], sym_triple[2])
+    sym_loss = sym_loss / num_views_on_half
+
+    return sym_loss, sym_triples
 
 
