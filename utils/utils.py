@@ -21,7 +21,8 @@ from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.io import load_obj
 
 # Data structures and functions for rendering
-from pytorch3d.structures import Meshes, Textures
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import Textures
 from pytorch3d.renderer import (
     look_at_view_transform,
     OpenGLPerspectiveCameras, 
@@ -31,7 +32,6 @@ from pytorch3d.renderer import (
     RasterizationSettings, 
     MeshRenderer, 
     MeshRasterizer,  
-    TexturedSoftPhongShader,
     SoftPhongShader,
     SoftSilhouetteShader,
     BlendParams

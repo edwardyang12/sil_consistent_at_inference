@@ -6,7 +6,8 @@ import torch.optim as optim
 import pytorch3d.structures
 from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.io import load_obj
-from pytorch3d.structures import Meshes, Textures
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import Textures
 from pytorch3d.renderer import (
     look_at_view_transform,
     OpenGLPerspectiveCameras, 
@@ -16,7 +17,6 @@ from pytorch3d.renderer import (
     RasterizationSettings, 
     MeshRenderer, 
     MeshRasterizer,  
-    TexturedSoftPhongShader,
     SoftPhongShader
 )
 from pytorch3d.loss import mesh_laplacian_smoothing, mesh_normal_consistency
