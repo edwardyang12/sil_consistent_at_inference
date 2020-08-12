@@ -1,6 +1,5 @@
 .ipynb_checkpoints/
 notebooks/__pycache__
-notebooks/test_dataset/
 *.swp
-
+data/
 __pycache__/
