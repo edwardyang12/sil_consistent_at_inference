@@ -157,10 +157,6 @@ def batched_render(mesh, azims, elevs, dists, batch_size, device):
         batch_dists = dists[pose_idx_start:pose_idx_end]
         
         R, T = look_at_view_transform(batch_dists, batch_elevs, batch_azims) 
-        print(type(R))
-        print(R.shape)
-        print(type(T))
-        print(T.shape)
         if batch_azims.shape[0] != batch_size:
             meshes = mesh.extend(batch_azims.shape[0])
         batch_renders = render_mesh(meshes, R, T, device)
