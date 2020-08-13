@@ -34,6 +34,11 @@ class MeshRefiner():
         self.cfg = utils.load_config(cfg_yaml_path)
         self.device = device
 
+        self.semantic_emb_cfg_path = self.cfg["training"]["semantic_emb_cfg_path"]
+        self.semantic_emb_weights_path = self.cfg["training"]["semantic_emb_weights_path"]
+        self.semantic_emb_latents_path = self.cfg["training"]["semantic_emb_latents_path"]
+        self.semantic_emb_loss = def_losses.SemanticEmbeddingLoss(self.semantic_emb_cfg_path, self.semantic_emb_weights_path, self.semantic_emb_latents_path, self.device)
+
         self.num_iterations = self.cfg["training"]["num_iterations"]
         self.img_sym_num_azim = self.cfg["training"]["img_sym_num_azim"]
 
@@ -43,6 +48,7 @@ class MeshRefiner():
         self.normals_lam= self.cfg["training"]["normals_lam"]
         self.img_sym_lam= self.cfg["training"]["img_sym_lam"]
         self.vertex_sym_lam= self.cfg["training"]["vertex_sym_lam"]
+        self.semantic_emb_lam = self.cfg["training"]["semantic_emb_lam"]
 
 
     # given a mesh, mask, and pose, solves an optimization problem which encourages
@@ -69,7 +75,8 @@ class MeshRefiner():
         # prep network & optimizer
         deform_net = DeformationNetwork(self.cfg, num_vertices, self.device)
         deform_net.to(self.device)
-        optimizer = optim.Adam(deform_net.parameters(), lr=1e-5)
+        optimizer = optim.Adam(deform_net.parameters(), lr=1e-6)
+        #optimizer = optim.Adam(deform_net.parameters(), lr=1e-5)
 
         # optimizing  
         loss_info = pd.DataFrame()
@@ -93,10 +100,12 @@ class MeshRefiner():
             img_sym_loss, _ = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.img_sym_num_azim, self.device)
             vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
 
+            semantic_emb_loss, _ = self.semantic_emb_loss.compute_loss(deformed_mesh)
+
             # optimization step on weighted losses
             total_loss = (sil_loss*self.sil_lam + l2_loss*self.l2_lam + lap_smoothness_loss*self.lap_lam +
                           normal_consistency_loss*self.normals_lam + img_sym_loss*self.img_sym_lam + 
-                          vertex_sym_loss*self.vertex_sym_lam)
+                          vertex_sym_loss*self.vertex_sym_lam + semantic_emb_loss*self.semantic_emb_lam)
             total_loss.backward()
             optimizer.step()
 
@@ -104,7 +113,8 @@ class MeshRefiner():
             iter_loss_info = {"iter":i, "sil_loss": sil_loss.item(), "l2_loss": l2_loss.item(), 
                               "lap_smoothness_loss":lap_smoothness_loss.item(),
                               "normal_consistency_loss": normal_consistency_loss.item(),"img_sym_loss": img_sym_loss.item(),
-                              "vertex_sym_loss": vertex_sym_loss.item(), "total_loss": total_loss.item()}
+                              "vertex_sym_loss": vertex_sym_loss.item(), "semantic_emb_loss": semantic_emb_loss.item(),
+                              "total_loss": total_loss.item()}
             loss_info = loss_info.append(iter_loss_info, ignore_index = True)
 
         return deformed_mesh, loss_info

@@ -33,6 +33,7 @@ from pytorch3d.renderer import (
     MeshRenderer, 
     MeshRasterizer,  
     SoftPhongShader,
+    HardPhongShader,
     SoftSilhouetteShader,
     BlendParams
 )
@@ -133,7 +134,7 @@ def render_mesh(mesh, R, T, device, img_size=512, silhouette=False):
                 cameras=cameras, 
                 raster_settings=raster_settings
             ),
-            shader=SoftPhongShader(
+            shader=HardPhongShader(
                 device=device, 
                 cameras=cameras,
                 lights=lights
@@ -145,7 +146,7 @@ def render_mesh(mesh, R, T, device, img_size=512, silhouette=False):
 
 
 # for batched rendering of many images
-def batched_render(mesh, azims, elevs, dists, batch_size, device):
+def batched_render(mesh, azims, elevs, dists, batch_size, device, silhouette=False):
     meshes = mesh.extend(batch_size)
     num_renders = azims.shape[0]
     renders = []
@@ -159,7 +160,7 @@ def batched_render(mesh, azims, elevs, dists, batch_size, device):
         R, T = look_at_view_transform(batch_dists, batch_elevs, batch_azims) 
         if batch_azims.shape[0] != batch_size:
             meshes = mesh.extend(batch_azims.shape[0])
-        batch_renders = render_mesh(meshes, R, T, device)
+        batch_renders = render_mesh(meshes, R, T, device, silhouette=silhouette)
         renders.append(batch_renders)
     renders = torch.cat(renders)
     return renders

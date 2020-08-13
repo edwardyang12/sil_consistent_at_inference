@@ -5,6 +5,7 @@ from torch.nn import functional as F
 import pytorch3d
 from pytorch3d.renderer import look_at_view_transform
 from torchvision import transforms
+import pickle
 
 from utils import utils
 
@@ -77,5 +78,6 @@ def image_symmetry_loss(mesh, sym_plane, num_azim, device, render_silhouettes=Tr
     sym_loss = sym_loss / num_views_on_half
 
     return sym_loss, sym_triples
+    
 
 
