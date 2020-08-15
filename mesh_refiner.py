@@ -43,13 +43,13 @@ class MeshRefiner():
         self.normals_lam= self.cfg["training"]["normals_lam"]
         self.img_sym_lam= self.cfg["training"]["img_sym_lam"]
         self.vertex_sym_lam= self.cfg["training"]["vertex_sym_lam"]
-        self.semantic_emb_lam = self.cfg["training"]["semantic_emb_lam"]
 
 
     # given a mesh, mask, and pose, solves an optimization problem which encourages
     # silhouette consistency on the mask at the given pose.
+    # record_intermediate will return a list of meshes
     # TODO: fix mesh (currently, needs to already be in device)
-    def refine_mesh(self, mesh, image, mask, pred_dist, pred_elev, pred_azim):
+    def refine_mesh(self, mesh, image, mask, pred_dist, pred_elev, pred_azim, record_intermediate=False):
         '''
         Args:
         pred_dist (int)
@@ -74,6 +74,7 @@ class MeshRefiner():
 
         # optimizing  
         loss_info = pd.DataFrame()
+        deformed_meshes = []
         for i in tqdm(range(self.num_iterations)):
             deform_net.train()
             optimizer.zero_grad()
@@ -90,9 +91,16 @@ class MeshRefiner():
             normal_consistency_loss = mesh_normal_consistency(deformed_mesh)
 
             sil_loss = F.binary_cross_entropy(rendered_deformed_mesh[0, :,:, 3], mask_gt)
+
             sym_plane_normal = [0,0,1]
-            img_sym_loss, _ = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.img_sym_num_azim, self.device)
-            vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
+            if self.img_sym_lam > 0:
+                img_sym_loss, _ = def_losses.image_symmetry_loss(deformed_mesh, sym_plane_normal, self.img_sym_num_azim, self.device)
+            else:
+                img_sym_loss = torch.tensor(0).to(self.device)
+            if self.vertex_sym_lam > 0:
+                vertex_sym_loss = def_losses.vertex_symmetry_loss_fast(deformed_mesh, sym_plane_normal, self.device)
+            else:
+                vertex_sym_loss = torch.tensor(0).to(self.device)
 
             # optimization step on weighted losses
             total_loss = (sil_loss*self.sil_lam + l2_loss*self.l2_lam + lap_smoothness_loss*self.lap_lam +
@@ -108,6 +116,12 @@ class MeshRefiner():
                               "vertex_sym_loss": vertex_sym_loss.item(), 
                               "total_loss": total_loss.item()}
             loss_info = loss_info.append(iter_loss_info, ignore_index = True)
+            if record_intermediate and (i % 100 == 0 or i == self.num_iterations-1):
+                print(i)
+                deformed_meshes.append(deformed_mesh)
 
-        return deformed_mesh, loss_info
+        if record_intermediate:
+            return deformed_meshes, loss_info
+        else:
+            return deformed_mesh, loss_info
             
